@@ -46,7 +46,7 @@ st.markdown("""
     .main { background-color: #0b0e14; color: #ffffff; }
     .stMetric { background-color: #1a1f2c; padding: 15px; border-radius: 10px; border: 1px solid #2d3748; }
     </style>
-""", unsafe_allow_unsafe_allow_html=True)
+""", unsafe_allow_html=True) # <-- এটি সঠিক (unsafe_allow_html)
 
 st.title("🌌 AuraSync: Spatial Presence & Aura Engine")
 st.caption("Live Hardware-to-Dashboard Neural Mirror via ESP8266 NodeMCU")
