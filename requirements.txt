@@ -1,5 +1,5 @@
 streamlit
 pandas
-flask
-requests
 plotly
+gspread
+google-auth
