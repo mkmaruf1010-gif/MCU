@@ -1,81 +1,48 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from flask import Flask, request, jsonify
-import threading
-import time
 
-# ল্যাপটপে নোডএমসিইউ-র ডেটা রিসিভ করার জন্য ব্যাকগ্রাউন্ড ফ্লাস্ক সার্ভার
-app = Flask(__name__)
+st.set_page_config(page_title="Biometric Attendance Analytics", layout="wide")
 
-# গ্লোবাল ডাটা স্টোর
-sensor_data = {"distance": 100, "light": 0, "timestamp": time.time()}
-data_history = []
+st.title("🪪 Real-Time Biometric Attendance Analytics")
+st.caption("Live Feed synced from NodeMCU via Google Sheets")
 
-@app.route('/update', methods=['POST'])
-def update():
-    global sensor_data
-    content = request.json
-    dist = content.get('distance', 100)
-    light = content.get('light', 0)
-    
-    sensor_data["distance"] = dist
-    sensor_data["light"] = light
-    sensor_data["timestamp"] = time.strftime("%H:%M:%S")
-    
-    # ডেটা হিস্ট্রিতে সেভ করা
-    if len(data_history) > 30:
-        data_history.pop(0)
-    data_history.append({"Time": sensor_data["timestamp"], "Distance (cm)": dist, "Aura Active": light})
-    
-    return jsonify({"status": "success"}), 200
+# গুগল শিটের পাবলিক CSV র-লিংক (আপনার শিটটি Share -> 'Anyone with link' করে নিন)
+SHEET_ID = "1Vq-2uJYSyJA_XZcSNyNxkZVRuNz-rpMalQYAx9V1hxw"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
-def run_flask():
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+@st.cache_data(ttl=5) # প্রতি ৫ সেকেন্ডে নতুন ডেটা ফেচ হবে
+def load_data():
+    df = pd.read_csv(SHEET_URL)
+    return df
 
-# ব্যাকগ্রাউন্ডে ফ্লাস্ক চালু রাখা
-if 'flask_started' not in st.session_state:
-    threading.Thread(target=run_flask, daemon=True).start()
-    st.session_state['flask_started'] = True
+try:
+    df = load_data()
+    df.columns = ["Timestamp", "User_ID", "Status"]
 
-# ----------------- STREAMLIT UI DESIGN -----------------
-st.set_page_config(page_title="AuraSync: Spatial Presence Dashboard", layout="wide")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Attendance Logs", len(df))
+    col2.metric("Unique Users Today", df["User_ID"].nunique())
+    col3.metric("Last Check-In User ID", df["User_ID"].iloc[-1] if not df.empty else "N/A")
 
-st.markdown("""
-    <style>
-    .main { background-color: #0b0e14; color: #ffffff; }
-    .stMetric { background-color: #1a1f2c; padding: 15px; border-radius: 10px; border: 1px solid #2d3748; }
-    </style>
-""", unsafe_allow_html=True) # <-- এটি সঠিক (unsafe_allow_html)
+    st.divider()
 
-st.title("🌌 AuraSync: Spatial Presence & Aura Engine")
-st.caption("Live Hardware-to-Dashboard Neural Mirror via ESP8266 NodeMCU")
+    col_left, col_right = st.columns(2)
 
-col1, col2, col3 = st.columns(3)
+    with col_left:
+        st.subheader("📋 Recent Attendance Records")
+        st.dataframe(df.tail(10), use_container_width=True)
 
-with col1:
-    st.metric(label="Proximity Distance", value=f"{sensor_data['distance']} cm")
+    with col_right:
+        st.subheader("📊 Check-In Distribution by User")
+        user_counts = df["User_ID"].value_counts().reset_index()
+        user_counts.columns = ["User_ID", "Logs Count"]
+        fig = px.bar(user_counts, x="User_ID", y="Logs Count", color="Logs Count", template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
 
-with col2:
-    status_text = "AURA ACTIVE (Focus Mode)" if sensor_data['light'] == 1 else "IDLE (Space Empty)"
-    st.metric(label="Room Status", value=status_text)
+except Exception as e:
+    st.info("Waiting for first attendance entry from NodeMCU...")
 
-with col3:
-    st.metric(label="Last Sync Time", value=sensor_data['timestamp'])
-
-st.divider()
-
-# রিয়েল-টাইম গ্রাফ ও হিটম্যাপ ভিজ্যুয়ালাইজেশন
-st.subheader("📊 Live Proximity & Energy Matrix")
-
-if data_history:
-    df = pd.DataFrame(data_history)
-    fig = px.line(df, x="Time", y="Distance (cm)", title="Spatial Distance Dynamics", template="plotly_dark")
-    fig.update_traces(line_color="#00f2fe", line_width=3)
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Waiting for NodeMCU data packet...")
-
-# লাইভ অটো-রিফ্রেশ লুপ
-time.sleep(1)
-st.rerun()
+# রিয়েল-টাইম রিফ্রেশ বাটনের বিকল্প
+if st.button("🔄 Refresh Data"):
+    st.rerun()
